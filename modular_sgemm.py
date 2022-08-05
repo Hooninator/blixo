@@ -12,7 +12,7 @@ from exo.platforms.neon import *
 from exo.syntax import *
 
 
-file = open("output.c", 'w+')
+file = open("output_big.c", 'w+')
 file2 = open("mkernel.c", 'w')
 python_file = open("output.py", 'w')
 
@@ -33,7 +33,7 @@ def generate_microkernel(kernel, n_dim):
                 .replace(neon_vld_4xf32, 'for ji in _: _ #0')
                 .replace(neon_vst_4xf32, 'for ji in _: _ #1')
                 .set_memory('C_reg', Neon4f)
-                .set_memory('C_reg_1', DRAM_STATIC)
+                #.set_memory('C_reg_1', DRAM_STATIC)
                 .stage_expr('A_vec', 'A[_,_]', memory=Neon4f)
                 .stage_expr('B_vec', 'B[_,_]', memory=Neon4f)
                 .replace_all(neon_vld_4xf32)
@@ -68,15 +68,14 @@ sgemm_window = (SGEMM
 
 #microkernel sizes
 M_r = 64
-N_r = 12 #NOTE: This must be at least 4, otherwise the vector instructions will not work
+N_r = 64 #NOTE: This must be at least 4, otherwise the vector instructions will not work
 #block sizes
 M_c = 64 
 K_c = 64
 #Matrix sizes
 M=257
 N=257
-#Edge case sizes
-BOTTOM_SIZE = M_c % M_r
+
 
 #Microkernels
 
@@ -104,7 +103,6 @@ neon_microkernel = (microkernel
                     .set_memory('C_reg', Neon4f)
                     )
 
-
 neon_microkernel = (neon_microkernel
                     .stage_expr('A_vec', 'A[_,_]', memory=Neon4f)
                     .stage_expr('B_vec', 'B[_,_]', memory=Neon4f)
@@ -119,7 +117,7 @@ neon_microkernel = (neon_microkernel
                     .lift_alloc('B_vec : _', n_lifts=2)
                     .fission_after('neon_vld_4xf32(_) #1', n_lifts=2)
                     .simplify())
-
+#print(neon_microkernel)
 
 #Microkernel for standard edge case
 microkernel_edge = (sgemm_window
@@ -165,6 +163,8 @@ neon_microkernel_edge = (neon_microkernel_edge
 
 
 #GEBP edge case microkernels
+
+#Pattern matching purposes
 microkernel_edge_gebp = (sgemm_window
                         .rename("microkernel_edge_gebp")
                         .partial_eval(M=M_r)
@@ -188,6 +188,7 @@ if N%N_r:
                 print(f"Generating microkernel {N_e}")
                 #N_e does not evenly divide 4, so do the weird microkernel insertion thing
                 if N_e%4:
+                        #print(N_e)
                         N_dim = (N_e//4)*4
                         gebp_edge_neon_microkernels[N_e] = (
                                 gebp_edge_microkernels[N_e]
@@ -204,6 +205,7 @@ if N%N_r:
                                                 "for k in _: _ #0")
                                         .call_eqv(gebp_edge_neon_microkernels[N_dim], f'gebp_edge_microkernel_1x{N_dim}(_)')
                         )
+                        #print(gebp_edge_neon_microkernels[N_e])
                 else:
                         gebp_edge_neon_microkernels[N_e] = (
                                 generate_microkernel(gebp_edge_microkernels[N_e], N_e)
@@ -233,13 +235,23 @@ else:
                         .rename("microkernel_edge_gebp_scheduled"))   
 
 #This I think can mirror the gebp approach, just with the bound being different
-microkernel_edge_gepp = (sgemm_window
-                         .rename('microkernel_edge_gepp')
-                         .partial_eval(K=K_c))
+#microkernel_edge_gepp = (sgemm_window
+                         #.rename('microkernel_edge_gepp')
+                         #.partial_eval(K=K_c))
 #print(microkernel_edge_gebp_scheduled)
 #file2.write(microkernel_edge_gebp_scheduled.c_code_str())
 
+#neon_microkernel_edge_gepp = (microkernel_edge_gepp
+ #                               .rename("neon_microkernel_edge_gepp")
 
+  #                              .simplify()
+#)
+bottom_gebp_kc = (sgemm_window
+                        .rename("bottom_gebp_kc")
+                        .partial_eval(M=(M%M_c))
+                        .partial_eval(K=K_c))
+
+#print(bottom_gebp_kc)
 
 
 
@@ -276,10 +288,6 @@ GEBP = (GEBP_MKc
         .replace_all(microkernel_edge_gebp)
         .call_eqv(microkernel_edge_gebp_scheduled, 'microkernel_edge_gebp(_)')
         #Tile the panel of B: TODO
-        #.stage_mem(f'B[0:{K_c},'
-        #           f'io*{N_r}:io*{N_r}+{N_r}]',
-        #           'B_blk', 'for jo in _: _ #0')
-        #.lift_alloc_simple('B_blk : _', n_lifts=2)
         .simplify()
 
 )
@@ -299,10 +307,6 @@ GEBP_edge = (GEBP_edge_Kc
         .replace_all(microkernel_edge)
         .call_eqv(neon_microkernel_edge, 'microkernel_edge(_)')
         #Tile the panel of B: TODO
-        #.stage_mem(f'B[0:{K_c},'
-        #           f'io*{N_r}:io*{N_r}+{N_r}]',
-        #           'B_blk', 'for jo in _: _ #0')
-        #.lift_alloc_simple('B_blk : _', n_lifts=2)
         .simplify()
 
 )
@@ -331,16 +335,22 @@ GEPP_edge_Kc = (sgemm_window
 GEPP = (GEPP_MKc
         .rename("GEPP")
         .split('i', M_c, ['io', 'ii'], tail='cut_and_guard')
+        .stage_mem(f'A[{M_c}*io : {M_c}*io + {M_c},'
+                   f'0:{K_c}]',
+                   'A_blk', 'for ii in _:_ #0')
         .replace_all(GEBP_MKc)
         .call_eqv(GEBP, 'GEBP_MKc(_)')
-        .replace_all(microkernel_edge_gepp)
+        .simplify()
+        .replace_all(bottom_gebp_kc)
+        .simplify()
         )
-
+#print(GEPP)
 GEPP_edge = (GEPP_edge_Kc
              .rename("GEPP_edge")
              .split('i', M_c, ['io', 'ii'], tail='cut_and_guard')
              .replace_all(GEBP_edge_Kc)
-             .call_eqv(GEBP_edge, "GEBP_edge_Kc(_)"))
+             .call_eqv(GEBP_edge, "GEBP_edge_Kc(_)")
+             .simplify())
 #file.write(GEPP.c_code_str())
 #file.write(GEPP_edge.c_code_str())#
 
@@ -369,9 +379,10 @@ sgemm_exo = (SGEMM
               .call_eqv(GEPP_edge, "GEPP_edge_Kc(_)")
               .simplify()
               #Blocking
-              .stage_window('A1_blk', 'A[_] #0', DRAM_STATIC)
-              .bound_alloc('A1_blk: _', [f'{M}', f'{K_c}'])
-              .stage_window('B1_blk', 'B[_] #0', DRAM_STATIC)
-              .bound_alloc('B1_blk: _', [f'{K_c}', f'{N}'])
+              .stage_window('A_panel', 'A[_] #0', DRAM_STATIC)
+              .bound_alloc('A_panel: _', [f'{M}', f'{K_c}'])
+              .stage_window('B_panel', 'B[_] #0', DRAM_STATIC)
+              .bound_alloc('B_panel: _', [f'{K_c}', f'{N}'])
               )
+print(sgemm_exo)
 file.write(sgemm_exo.c_code_str())
