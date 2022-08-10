@@ -196,7 +196,7 @@ if (M % 4 > 0) {
 static void print_matrix(float *M, int n, int m) {
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
-            printf("%lf, ", M[j*n + i]);
+            printf("%lf, ", M[j*m + i]);
         }
         printf("\n");
     }
@@ -220,21 +220,21 @@ EXO_ASSUME(16 > 4 * 3);
 EXO_ASSUME(1 == 1);
 EXO_ASSUME(1 == 1);
 EXO_ASSUME(1 == 1);
-for (int n_iter = 0; n_iter < 3; n_iter++) {
+for (int n_iter = 0; n_iter < 4; n_iter++) {
   static float A_panel[16 * 4];
   for (int i = 0; i < 4 + n_iter * 4; i++) {
     for (int k = 0; k < 4; k++) {
-      A_panel[(i) * (4) + (k) * (1)] = A[(k + n_iter * 4 + 4) * (K) + (i) * (1)];
+      A_panel[(i) * (4) + (k) * (1)] = A[(k + n_iter * 4) * (K) + (i) * (1)];
     }
   }
   for (int i = 0; i < 4; i++) {
     for (int k = 0; k < 4; k++) {
-      A_panel[(i + 4) * (4) + (k) * (1)] = A[(i + n_iter * 4 + 4) * (K) + (k + n_iter * 4 + 4) * (1)];
+      A_panel[(i + 4) * (4) + (k) * (1)] = A[(i + n_iter * 4) * (K) + (k + n_iter * 4) * (1)];
     }
   }
-  for (int i = 0; i < 16 - 4 * 2 - n_iter * 4; i++) {
+  for (int i = 0; i < 16 - 4 - n_iter * 4; i++) {
     for (int k = 0; k < 4; k++) {
-      A_panel[(i + 4 * 2) * (4) + (k) * (1)] = A[(i + 4 * 2 + 4 * n_iter) * (K) + (k + n_iter * 4 + 4) * (1)];
+      A_panel[(i + 4 * 2) * (4) + (k) * (1)] = A[(i + 4 * n_iter) * (K) + (k + n_iter * 4) * (1)];
     }
   }
   static float B_panel[4 * 16];
@@ -243,7 +243,9 @@ for (int n_iter = 0; n_iter < 3; n_iter++) {
       B_panel[(k) * (16) + (j) * (1)] = B[(k + 4 * n_iter) * (16) + (j) * (1)];
     }
   }
+  //print_matrix(B, 16, 16);
   print_matrix(A_panel, 4, 16);
+  //print_matrix(B_panel, 16, 4);
   GEPP(ctxt,16,16,(struct exo_win_2f32){ (float*)&A_panel[(0) * (4) + (0) * (1)], { 4, 1 } },(struct exo_win_2f32){ (float*)&B_panel[(0) * (16) + (0) * (1)], { 16, 1 } },(struct exo_win_2f32){ (float*)&C[(0) * (16) + (0) * (1)], { 16, 1 } });
 }
 }
