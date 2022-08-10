@@ -229,12 +229,12 @@ for (int n_iter = 0; n_iter < 4; n_iter++) {
   }
   for (int i = 0; i < 4; i++) {
     for (int k = 0; k < 4; k++) {
-      A_panel[(i + 4) * (4) + (k) * (1)] = A[(i + n_iter * 4) * (K) + (k + n_iter * 4) * (1)];
+      A_panel[(4 + n_iter * 4 + i)*4 + (k) * (1)] = A[(i + n_iter * 4) * (K) + (k + n_iter * 4) * (1)];
     }
   }
   for (int i = 0; i < 16 - 4 - n_iter * 4; i++) {
     for (int k = 0; k < 4; k++) {
-      A_panel[(i + 4 * 2) * (4) + (k) * (1)] = A[(i + 4 * n_iter) * (K) + (k + n_iter * 4) * (1)];
+      A_panel[(4 + n_iter * 4 + 4 + i) * 4 + (k) * (1)] = A[(i + 4 * n_iter) * (K) + (k + n_iter * 4) * (1)];
     }
   }
   static float B_panel[4 * 16];
