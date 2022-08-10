@@ -33,15 +33,13 @@ typedef struct c_code_str_Context {
 } c_code_str_Context;
 
 
-// sgemm_exo(
-//     M : size,
-//     N : size,
+// __SYMM_BLK(
 //     K : size,
-//     A : f32[M,K]  @DRAM,
-//     B : f32[K,N]  @DRAM,
-//     C : f32[M,N]  @DRAM
+//     A : f32[32,K]  @DRAM,
+//     B : f32[K,32]  @DRAM,
+//     C : f32[32,32]  @DRAM
 // )
-void sgemm_exo( c_code_str_Context *ctxt, int_fast32_t M, int_fast32_t N, int_fast32_t K, float* A, float* B, float* C );
+void __SYMM_BLK( c_code_str_Context *ctxt, int_fast32_t K, float* A, float* B, float* C );
 
 
 static int _floor_div(int num, int quot) {
@@ -62,97 +60,6 @@ static int8_t _clamp_32to8(int32_t x) {
 
 
 #include <arm_neon.h>
-
-// neon_microkernel_edge(
-//     K : size,
-//     A : [f32][4,K]  @DRAM,
-//     B : [f32][K,4]  @DRAM,
-//     C : [f32][4,4]  @DRAM
-// )
-void neon_microkernel_edge( c_code_str_Context *ctxt, int_fast32_t K, struct exo_win_2f32 A, struct exo_win_2f32 B, struct exo_win_2f32 C ) {
-EXO_ASSUME(K >= 1);
-EXO_ASSUME(A.strides[1] == 1);
-EXO_ASSUME(B.strides[1] == 1);
-EXO_ASSUME(C.strides[1] == 1);
-float32x4_t C_reg[4][1];
-for (int i = 0; i < 4; i++) {
-  C_reg[i][0] = vld1q_f32(&C.data[(i) * (C.strides[0]) + (0) * (C.strides[1])]);
-}
-for (int k = 0; k < K; k++) {
-  float32x4_t A_vec[4];
-  for (int i = 0; i < 4; i++) {
-    A_vec[i] = vld1q_dup_f32(&A.data[(i) * (A.strides[0]) + (k) * (A.strides[1])]);
-  }
-  float32x4_t B_vec[1];
-  B_vec[0] = vld1q_f32(&B.data[(k) * (B.strides[0]) + (0) * (B.strides[1])]);
-  for (int i = 0; i < 4; i++) {
-    C_reg[i][0] = vmlaq_f32(C_reg[i][0], A_vec[i], B_vec[0]);
-  }
-}
-for (int i = 0; i < 4; i++) {
-  vst1q_f32(&C.data[(i) * (C.strides[0]) + (0) * (C.strides[1])], C_reg[i][0]);
-}
-}
-
-// GEBP_edge(
-//     N : size,
-//     K : size,
-//     A : [f32][4,K]  @DRAM,
-//     B : [f32][K,N]  @DRAM,
-//     C : [f32][4,N]  @DRAM
-// )
-void GEBP_edge( c_code_str_Context *ctxt, int_fast32_t N, int_fast32_t K, struct exo_win_2f32 A, struct exo_win_2f32 B, struct exo_win_2f32 C ) {
-EXO_ASSUME(N >= 1);
-EXO_ASSUME(K >= 1);
-EXO_ASSUME(A.strides[1] == 1);
-EXO_ASSUME(B.strides[1] == 1);
-EXO_ASSUME(C.strides[1] == 1);
-for (int io = 0; io < 1; io++) {
-  for (int jo = 0; jo < ((N) / (4)); jo++) {
-    neon_microkernel_edge(ctxt,K,(struct exo_win_2f32){ (float*)&A.data[(4 * io) * (A.strides[0]) + (0) * (A.strides[1])], { A.strides[0], A.strides[1] } },(struct exo_win_2f32){ (float*)&B.data[(0) * (B.strides[0]) + (4 * jo) * (B.strides[1])], { B.strides[0], B.strides[1] } },(struct exo_win_2f32){ (float*)&C.data[(4 * io) * (C.strides[0]) + (4 * jo) * (C.strides[1])], { C.strides[0], C.strides[1] } });
-  }
-}
-for (int io = 0; io < 1; io++) {
-  if (N % 4 > 0) {
-    for (int ii = 0; ii < 4; ii++) {
-      for (int ji = 0; ji < N % 4; ji++) {
-        for (int k = 0; k < K; k++) {
-          C.data[(4 * io + ii) * (C.strides[0]) + (ji + ((N) / (4)) * 4) * (C.strides[1])] += A.data[(4 * io + ii) * (A.strides[0]) + (k) * (A.strides[1])] * B.data[(k) * (B.strides[0]) + (ji + ((N) / (4)) * 4) * (B.strides[1])];
-        }
-      }
-    }
-  }
-}
-}
-
-// GEPP_edge(
-//     M : size,
-//     N : size,
-//     K : size,
-//     A : [f32][M,K]  @DRAM,
-//     B : [f32][K,N]  @DRAM,
-//     C : [f32][M,N]  @DRAM
-// )
-void GEPP_edge( c_code_str_Context *ctxt, int_fast32_t M, int_fast32_t N, int_fast32_t K, struct exo_win_2f32 A, struct exo_win_2f32 B, struct exo_win_2f32 C ) {
-EXO_ASSUME(M >= 1);
-EXO_ASSUME(N >= 1);
-EXO_ASSUME(K >= 1);
-EXO_ASSUME(A.strides[1] == 1);
-EXO_ASSUME(B.strides[1] == 1);
-EXO_ASSUME(C.strides[1] == 1);
-for (int io = 0; io < ((M) / (4)); io++) {
-  GEBP_edge(ctxt,N,K,(struct exo_win_2f32){ (float*)&A.data[(4 * io) * (A.strides[0]) + (0) * (A.strides[1])], { A.strides[0], A.strides[1] } },(struct exo_win_2f32){ (float*)&B.data[(0) * (B.strides[0]) + (0) * (B.strides[1])], { B.strides[0], B.strides[1] } },(struct exo_win_2f32){ (float*)&C.data[(4 * io) * (C.strides[0]) + (0) * (C.strides[1])], { C.strides[0], C.strides[1] } });
-}
-if (M % 4 > 0) {
-  for (int ii = 0; ii < M % 4; ii++) {
-    for (int j = 0; j < N; j++) {
-      for (int k = 0; k < K; k++) {
-        C.data[(ii + ((M) / (4)) * 4) * (C.strides[0]) + (j) * (C.strides[1])] += A.data[(ii + ((M) / (4)) * 4) * (A.strides[0]) + (k) * (A.strides[1])] * B.data[(k) * (B.strides[0]) + (j) * (B.strides[1])];
-      }
-    }
-  }
-}
-}
 
 
 /* relying on the following instruction...
@@ -269,37 +176,46 @@ if (M % 4 > 0) {
 }
 }
 
-// sgemm_exo(
-//     M : size,
-//     N : size,
+// __SYMM_BLK(
 //     K : size,
-//     A : f32[M,K]  @DRAM,
-//     B : f32[K,N]  @DRAM,
-//     C : f32[M,N]  @DRAM
+//     A : f32[32,K]  @DRAM,
+//     B : f32[K,32]  @DRAM,
+//     C : f32[32,32]  @DRAM
 // )
-void sgemm_exo( c_code_str_Context *ctxt, int_fast32_t M, int_fast32_t N, int_fast32_t K, float* A, float* B, float* C ) {
-EXO_ASSUME(M >= 1);
-EXO_ASSUME(N >= 1);
+void __SYMM_BLK( c_code_str_Context *ctxt, int_fast32_t K, float* A, float* B, float* C ) {
+EXO_ASSUME(32 >= 1);
 EXO_ASSUME(K >= 1);
+EXO_ASSUME(K > 4);
+EXO_ASSUME(K % 4 == 0);
+EXO_ASSUME(32 % 4 == 0);
+EXO_ASSUME(K >= 4 * (7 + 1));
+EXO_ASSUME(32 >= 4 * (7 + 1));
 EXO_ASSUME(1 == 1);
 EXO_ASSUME(1 == 1);
 EXO_ASSUME(1 == 1);
-for (int ki = 0; ki < ((K) / (4)); ki++) {
+for (int n_iter = 0; n_iter < 7 + 1; n_iter++) {
   static float A_panel[32 * 4];
-  for (int i0 = 0; i0 < M - 0; i0++) {
-    for (int i1 = 0; i1 < 4 * ki + 4 - 4 * ki; i1++) {
-      A_panel[(i0) * (4) + (i1) * (1)] = A[(0 + i0) * (K) + (4 * ki + i1) * (1)];
+  for (int i = 0; i < n_iter * 4; i++) {
+    for (int k = 0; k < 4; k++) {
+      A_panel[(i) * (4) + (k) * (1)] = A[(k + n_iter * 4) * (K) + (i) * (1)];
+    }
+  }
+  for (int i = 0; i < 4; i++) {
+    for (int k = 0; k < 4; k++) {
+      A_panel[(n_iter * 4 + i) * (4) + (k) * (1)] = A[(i + n_iter * 4) * (K) + (k + n_iter * 4) * (1)];
+    }
+  }
+  for (int i = 0; i < 32 - 4 - n_iter * 4; i++) {
+    for (int k = 0; k < 4; k++) {
+      A_panel[(4 + n_iter * 4 + i) * (4) + (k) * (1)] = A[(i + 4 * n_iter + 4) * (K) + (k + n_iter * 4) * (1)];
     }
   }
   static float B_panel[4 * 32];
-  for (int i0 = 0; i0 < 4 * ki + 4 - 4 * ki; i0++) {
-    for (int i1 = 0; i1 < N - 0; i1++) {
-      B_panel[(i0) * (32) + (i1) * (1)] = B[(4 * ki + i0) * (N) + (0 + i1) * (1)];
+  for (int j = 0; j < 32; j++) {
+    for (int k = 0; k < 4; k++) {
+      B_panel[(k) * (32) + (j) * (1)] = B[(k + 4 * n_iter) * (32) + (j) * (1)];
     }
   }
-  GEPP(ctxt,M,N,(struct exo_win_2f32){ (float*)&A_panel[(0) * (4) + (0) * (1)], { 4, 1 } },(struct exo_win_2f32){ (float*)&B_panel[(0) * (32) + (0) * (1)], { 32, 1 } },(struct exo_win_2f32){ (float*)&C[(0) * (N) + (0) * (1)], { N, 1 } });
-}
-if (K % 4 > 0) {
-  GEPP_edge(ctxt,M,N,K % 4,(struct exo_win_2f32){ (float*)&A[(0) * (K) + (4 * ((K) / (4))) * (1)], { K, 1 } },(struct exo_win_2f32){ (float*)&B[(4 * ((K) / (4))) * (N) + (0) * (1)], { N, 1 } },(struct exo_win_2f32){ (float*)&C[(0) * (N) + (0) * (1)], { N, 1 } });
+  GEPP(ctxt,32,32,(struct exo_win_2f32){ (float*)&A_panel[(0) * (4) + (0) * (1)], { 4, 1 } },(struct exo_win_2f32){ (float*)&B_panel[(0) * (32) + (0) * (1)], { 32, 1 } },(struct exo_win_2f32){ (float*)&C[(0) * (32) + (0) * (1)], { 32, 1 } });
 }
 }

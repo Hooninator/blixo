@@ -74,9 +74,9 @@ N_r = 4 #NOTE: This must be divisible by 4, fix that at some point
 M_c = 4
 K_c = 4
 #Matrix sizes
-M=16
-N=16
-K=16
+M=32
+N=32
+K=32
 
 
 #Microkernels
@@ -111,8 +111,6 @@ neon_microkernel = (neon_microkernel
                     .replace_all(neon_vld_4xf32)
                     .replace_all(neon_broadcast_4xf32)
                     .replace_all(neon_vfmadd_4xf32_4xf32)
-                    .lift_alloc('A_vec: _')
-                    .fission_after('neon_broadcast_4xf32(_)')
                     #lift_alloc and fission_after are used to split up bodies of loops
                     .lift_alloc('A_vec : _', n_lifts=2)
                     .fission_after('neon_broadcast_4xf32(_)', n_lifts=2)
@@ -291,18 +289,18 @@ GEBP = (GEBP_MKc
         #outer loop must be A[0], middle loop must be B[1], inner loop must be total size of C
         .replace_all(microkernel)
         .call_eqv(neon_microkernel, 'microkernel(_)')
-        .replace_all(microkernel_edge_gebp)
-        .call_eqv(microkernel_edge_gebp_scheduled, 'microkernel_edge_gebp(_)')
+        #.replace_all(microkernel_edge_gebp)
+        #.call_eqv(microkernel_edge_gebp_scheduled, 'microkernel_edge_gebp(_)')
         #Tiling the panels of B or A leads to a small performance decrease :( 
         .simplify()
         #.reorder('io', 'jo')
         #.stage_mem(f'B[0:{K_c},'
-        #           f'{N_r}*jo:{N_r}*jo+{N_r}]',
-        #           'B_strip', 'for io in _:_ #0')
+         #          f'{N_r}*jo:{N_r}*jo+{N_r}]',
+          #         'B_strip', 'for io in _:_ #0')
         #.stage_mem(f'A[io*{M_r}:io*{M_r}+{M_r},'
          #          f'0:{K_c}]', 'A_strip', 'for jo in _:_ #0')
         #.simplify()
-        #.set_memory('A_strip', DRAM_STATIC)
+        #.set_memory('B_strip', DRAM_STATIC)
 )
 print(GEBP)
 GEBP_edge = (GEBP_edge_Kc
@@ -357,7 +355,7 @@ GEPP = (GEPP_MKc
         .replace_all(bottom_gebp_kc)
         .simplify()
         #Transpose A_blk
-        .rearrange_dim('A_blk: _', [1, 0])
+        #.rearrange_dim('A_blk: _', [1, 0])
         )
 print(GEPP)
 GEPP_edge = (GEPP_edge_Kc

@@ -9,14 +9,14 @@ from exo.platforms.neon import *
 from exo.syntax import *
 import modular_sgemm
 
-file = open("symm.c", 'w+')
+file = open("symm_2.c", 'w+')
 
 #microkernel sizes
 M_r = 4
 N_r = 4 #NOTE: This must be divisible by 4, fix that at some point
 #block sizes
-M_c = 4
-K_c = 4
+M_c = 8
+K_c = 8
 #Matrix sizes
 M=16
 N=16
@@ -140,14 +140,14 @@ _SYMM_BLK = (_SYMM_BLK.simplify())
 
 #Now, we partition B and C
 _SYMM_BLK = (_SYMM_BLK
-                .partial_eval(N=N) #Do this otherwise DRAM_STATIC complains
+                .partial_eval(N=N) #Do this otherwise DRAM_STATIC complains'
                 .stage_expr('B_panel', 'B[_, _]', memory=DRAM_STATIC)
                 .lift_alloc('B_panel : _', n_lifts=2)
                 .fission_after('C[_] += _ ', n_lifts=2)
                 .rearrange_dim('B_panel : _', [1, 0])
                 .simplify()
-                .replace_all(modular_sgemm.GEPP_MKc)
-                .call_eqv(modular_sgemm.GEPP, 'GEPP_MKc(_)')
+                #.replace_all(modular_sgemm.GEPP_MKc)
+                #.call_eqv(modular_sgemm.GEPP, 'GEPP_MKc(_)')
                  )
 print(_SYMM_BLK)
 
@@ -159,28 +159,29 @@ def __SYMM_BLK(K: size, A: f32[M, K] @ DRAM, B: f32[K, N] @ DRAM,
     assert K > 4
     assert K % K_c == 0
     assert M % M_c == 0
-    assert K > K_c*n_iters
-    assert M > M_c*n_iters
+    assert K >= K_c*(n_iters+1)
+    assert M >= M_c*(n_iters+1)
     assert stride(A, 1) == 1
     assert stride(B, 1) == 1
     assert stride(C, 1) == 1
-    for n_iter in seq(0, n_iters):
+    
+    for n_iter in seq(0, n_iters+1):
         A_panel: R[M, K_c] @ DRAM_STATIC
-
+        
         #This loop handles the transposed A_10 block
-        for i in par(0, K_c + (n_iter * K_c)):
+        for i in par(0, (n_iter * K_c)):
             for k in par(0, M_c):
-                A_panel[i, k] = A[(k + n_iter * M_c + M_c), i]
+                A_panel[i, k] = A[(k + n_iter * M_c), i]
         
         #This loop handles the A_11 block 
         for i in par(0, M_c):
             for k in par(0, K_c):
-                A_panel[i + M_c, k] = A[(i + n_iter * M_c + M_c), (k + n_iter * K_c + K_c)]
+                A_panel[(n_iter * K_c + i), k] = A[(i + n_iter * M_c), (k + n_iter * K_c)]
         
         #This loop handles the A_21 block
-        for i in par(0, (M - M_c * 2) - (n_iter * M_c)):
+        for i in par(0, (M - M_c - (n_iter * M_c))):
             for k in par(0, K_c):
-                A_panel[i + M_c*2, k] = A[(i + M_c * 2 + M_c * n_iter), (k + n_iter * K_c + K_c)]
+                A_panel[(M_c + n_iter * M_c + i), k] = A[(i + M_c * n_iter + M_c), (k + n_iter * K_c)]
 
         #This loop creates the B panel
         B_panel: R[K_c, N] @ DRAM_STATIC
