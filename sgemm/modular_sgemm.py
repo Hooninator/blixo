@@ -69,11 +69,11 @@ sgemm_window = (SGEMM
                 .set_window('C', True))
 
 #microkernel sizes
-M_r = 16
-N_r = 16 #NOTE: This must be at least 4, otherwise the vector instructions will not work
+M_r = 128
+N_r = 128 #NOTE: This must be at least 4, otherwise the vector instructions will not work
 #block sizes
-M_c = 64 
-K_c = 32
+M_c = 128 
+K_c = 256
 #Matrix sizes
 M=1024
 N=1024
@@ -134,7 +134,6 @@ neon_microkernel_edge = (microkernel_edge
                     .rename('neon_microkernel_edge')
                     .reorder('j','k')
                     .reorder('i','k')
-                    #Somehow, using this split command resizes C 
                     .split('j', 4, ['jo','ji'], perfect=True)
                     .par_to_seq('for k in _: _')
                     .stage_assn('C_reg', 'C[_] += _')
