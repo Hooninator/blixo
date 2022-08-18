@@ -1,0 +1,99 @@
+gebp_edge_microkernels = {}
+gebp_edge_neon_microkernels = {}
+for N_e in range(4, N_r):
+        gebp_edge_microkernels[N_e] = (
+                sgemm_window
+                        .rename(f'gebp_edge_microkernel_1x{N_e}')
+                        .partial_eval(M=M_r)
+                        .partial_eval(K=K_c)
+                        .partial_eval(N=N_e)
+        )
+        print(f"Generating microkernel {N_e}")
+        gebp_edge_neon_microkernels[N_e] = (
+                gebp_edge_microkernels[N_e]
+                        .rename(f"gebp_edge_neon_microkernel_1x{N_e}")
+                        .reorder('j','k')
+                        .reorder('i','k')
+                        .split('j', 4, ['jo','ji'], tail='cut_and_guard')
+                        .par_to_seq('for k in _: _')
+                        .stage_assn('C_reg', 'C[_] += _')
+                        .lift_alloc('C_reg : _', n_lifts=4)
+                        #double fission lifts both statements out and copies the loops they're wrapped in
+                        .double_fission('C_reg[_] = C[_]', 'C_reg[_] += _', n_lifts=4)
+                        .replace(neon_vld_4xf32, 'for ji in _: _ #0')
+                        .replace(neon_vst_4xf32, 'for ji in _: _ #1')
+                        .set_memory('C_reg', Neon4f)
+                        .set_memory('C_reg_1', DRAM_STATIC)
+                        .stage_expr('A_vec', 'A[_,_]', memory=Neon4f)
+                        .stage_expr('B_vec', 'B[_,_]', memory=Neon4f)
+                        .replace_all(neon_vld_4xf32)
+                        .replace_all(neon_broadcast_4xf32)
+                        .replace_all(neon_vfmadd_4xf32_4xf32)
+                        #lift_alloc and fission_after are used to split up bodies of loops
+                        .lift_alloc('A_vec : _', n_lifts=2)
+                        .fission_after('neon_broadcast_4xf32(_)', n_lifts=2)
+                        .lift_alloc('B_vec : _', n_lifts=2)
+                        .fission_after('neon_vld_4xf32(_) #1', n_lifts=2)
+                        .simplify()
+        )
+        print(gebp_edge_neon_microkernels[N_e])
+        print(gebp_edge_neon_microkernels[N_e].c_code_str())
+
+
+
+
+
+#DELETE THIS ONE LATER
+neon_microkernel_edge_gebp = (microkernel_edge_gebp
+                                .rename("neon_microkernel_edge_gebp")
+                                .reorder('j','k')
+                                .reorder('i','k')
+                                #Somehow, using this split command resizes C 
+                                .split('j', 4, ['jo','ji'], tail='cut_and_guard')
+                                .par_to_seq('for k in _: _')
+                                .stage_assn('C_reg', 'C[_] += _')
+                                .lift_alloc('C_reg : _', n_lifts=4)
+                                #double fission lifts both statements out and copies the loops they're wrapped in
+                                .double_fission('C_reg[_] = C[_]', 'C_reg[_] += _', n_lifts=4)
+                                #.replace(neon_vld_4xf32, 'for ji in _: _ #0')
+                                #.replace(neon_vst_4xf32, 'for ji in _: _ #1')
+                                #.set_memory('C_reg', Neon4f)
+                                #.set_memory('C_reg_1', Neon4f)
+                                .stage_expr('A_vec', 'A[_,_]', memory=DRAM_STATIC)
+                                .stage_expr('B_vec', 'B[_,_]', memory=DRAM_STATIC)
+                                #.lift_alloc('A_vec : _', n_lifts=2)
+                                #.lift_alloc('B_vec : _', n_lifts=2)
+                                #.replace_all(neon_vld_4xf32)
+                                #.replace_all(neon_broadcast_4xf32)
+                                #.replace_all(neon_vfmadd_4xf32_4xf32)
+                                
+                                )
+
+neon_microkernel_edge_gebp = (microkernel_edge_gebp
+                                .rename("neon_microkernel_edge_gebp")
+                                .reorder('j','k')
+                                .reorder('i','k')
+                                #Somehow, using this split command resizes C 
+                                .split('j', 4, ['jo','ji'], tail='cut_and_guard')
+                                .par_to_seq('for k in _: _')
+                                .stage_assn('C_reg', 'C[_] += _')
+                                .lift_alloc('C_reg : _', n_lifts=4)
+                                #double fission lifts both statements out and copies the loops they're wrapped in
+                                .double_fission('C_reg[_] = C[_]', 'C_reg[_] += _', n_lifts=4)
+                                .replace(neon_vld_4xf32, 'for ji in _: _ #0')
+                                .replace(neon_vst_4xf32, 'for ji in _: _ #1')
+                                .set_memory('C_reg', Neon4f)
+                                .stage_expr('A_vec', 'A[_,_]', memory=Neon4f)
+                                .stage_expr('B_vec', 'B[_,_]', memory=Neon4f)
+                                .replace_all(neon_vld_4xf32)
+                                .replace_all(neon_broadcast_4xf32)
+                                .replace_all(neon_vfmadd_4xf32_4xf32)
+                                #.lift_alloc('A_vec: _')
+                                #.fission_after('neon_broadcast_4xf32(_)')
+                                #lift_alloc and fission_after are used to split up bodies of loops
+                                .lift_alloc('A_vec : _', n_lifts=2)
+                                .fission_after('neon_broadcast_4xf32(_)', n_lifts=2)
+                                .lift_alloc('B_vec : _', n_lifts=2)
+                                .fission_after('neon_vld_4xf32(_) #1', n_lifts=2)
+                                .simplify())
+print(neon_microkernel_edge_gebp.c_code_str())

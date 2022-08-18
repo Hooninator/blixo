@@ -20,13 +20,13 @@
 #  define EXO_ASSUME(expr) ((void)(expr))
 #endif
 
-struct exo_win_2f32{
-    float *data;
-    int_fast32_t strides[2];
-};
 struct exo_win_1f32{
     float *data;
     int_fast32_t strides[1];
+};
+struct exo_win_2f32{
+    float *data;
+    int_fast32_t strides[2];
 };
 typedef struct c_code_str_Context { 
 
@@ -162,14 +162,14 @@ neon_broadcast_4xf32(dst,src)
 
 
 /* relying on the following instruction...
-neon_vfmadd_4xf32_4xf32(dst,lhs,rhs)
-{dst_data} = vmlaq_f32({dst_data}, {lhs_data}, {rhs_data});
+neon_vst_4xf32(dst,src)
+vst1q_f32(&{dst_data}, {src_data});
 */
 
 
 /* relying on the following instruction...
-neon_vst_4xf32(dst,src)
-vst1q_f32(&{dst_data}, {src_data});
+neon_vfmadd_4xf32_4xf32(dst,lhs,rhs)
+{dst_data} = vmlaq_f32({dst_data}, {lhs_data}, {rhs_data});
 */
 
 
@@ -285,19 +285,19 @@ EXO_ASSUME(1 == 1);
 EXO_ASSUME(1 == 1);
 EXO_ASSUME(1 == 1);
 for (int ki = 0; ki < ((K) / (4)); ki++) {
-  static float A_panel[32 * 4];
+  static float A_panel[16 * 4];
   for (int i0 = 0; i0 < M - 0; i0++) {
     for (int i1 = 0; i1 < 4 * ki + 4 - 4 * ki; i1++) {
       A_panel[(i0) * (4) + (i1) * (1)] = A[(0 + i0) * (K) + (4 * ki + i1) * (1)];
     }
   }
-  static float B_panel[4 * 32];
+  static float B_panel[4 * 16];
   for (int i0 = 0; i0 < 4 * ki + 4 - 4 * ki; i0++) {
     for (int i1 = 0; i1 < N - 0; i1++) {
-      B_panel[(i0) * (32) + (i1) * (1)] = B[(4 * ki + i0) * (N) + (0 + i1) * (1)];
+      B_panel[(i0) * (16) + (i1) * (1)] = B[(4 * ki + i0) * (N) + (0 + i1) * (1)];
     }
   }
-  GEPP(ctxt,M,N,(struct exo_win_2f32){ (float*)&A_panel[(0) * (4) + (0) * (1)], { 4, 1 } },(struct exo_win_2f32){ (float*)&B_panel[(0) * (32) + (0) * (1)], { 32, 1 } },(struct exo_win_2f32){ (float*)&C[(0) * (N) + (0) * (1)], { N, 1 } });
+  GEPP(ctxt,M,N,(struct exo_win_2f32){ (float*)&A_panel[(0) * (4) + (0) * (1)], { 4, 1 } },(struct exo_win_2f32){ (float*)&B_panel[(0) * (16) + (0) * (1)], { 16, 1 } },(struct exo_win_2f32){ (float*)&C[(0) * (N) + (0) * (1)], { N, 1 } });
 }
 if (K % 4 > 0) {
   GEPP_edge(ctxt,M,N,K % 4,(struct exo_win_2f32){ (float*)&A[(0) * (K) + (4 * ((K) / (4))) * (1)], { K, 1 } },(struct exo_win_2f32){ (float*)&B[(4 * ((K) / (4))) * (N) + (0) * (1)], { N, 1 } },(struct exo_win_2f32){ (float*)&C[(0) * (N) + (0) * (1)], { N, 1 } });

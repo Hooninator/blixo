@@ -15,8 +15,8 @@ file = open("symm_2.c", 'w+')
 M_r = 4
 N_r = 4 #NOTE: This must be divisible by 4, fix that at some point
 #block sizes
-M_c = 8
-K_c = 8
+M_c = 4
+K_c = 4
 #Matrix sizes
 M=16
 N=16
@@ -64,7 +64,7 @@ SYMM_BLK = (SYMM
             .set_window('C', True))
 
 #Substitute GEPP
-n_iters = 1+((N-2*M_c)//M_c)
+n_iters = (1+((N-2*M_c)//M_c)) + 1
 print(f"n_iters: {n_iters}")
 
 
@@ -165,7 +165,7 @@ def __SYMM_BLK(K: size, A: f32[M, K] @ DRAM, B: f32[K, N] @ DRAM,
     assert stride(B, 1) == 1
     assert stride(C, 1) == 1
     
-    for n_iter in seq(0, n_iters+1):
+    for n_iter in seq(0, n_iters):
         A_panel: R[M, K_c] @ DRAM_STATIC
         
         #This loop handles the transposed A_10 block

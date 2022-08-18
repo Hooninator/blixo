@@ -342,7 +342,7 @@ for (int n_iter = 0; n_iter < 4; n_iter++) {
   }
   //print_matrix(B, 16, 16);
   //print_matrix(A_panel, 4, 16);
-  print_matrix(B_panel, 16, 4);
+  //print_matrix(B_panel, 16, 4);
   GEPP(ctxt,16,16,(struct exo_win_2f32){ (float*)&A_panel[(0) * (4) + (0) * (1)], { 4, 1 } },(struct exo_win_2f32){ (float*)&B_panel[(0) * (16) + (0) * (1)], { 16, 1 } },(struct exo_win_2f32){ (float*)&C[(0) * (16) + (0) * (1)], { 16, 1 } });
 }
 }

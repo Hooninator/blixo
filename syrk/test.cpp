@@ -9,7 +9,7 @@
 
 
 #include <cblas.h>
-#include "symm_2.c"
+#include "syrk.c"
 //#include "output.c"
 
 static std::vector<float> gen_matrix(long m, long n, float v) {
@@ -22,13 +22,6 @@ static std::vector<float> gen_matrix(long m, long n, float v) {
   //std::generate(std::begin(mat), std::end(mat), [&]() { return rv(rng); });
 
   return mat;
-}
-
-static std::vector<float> gen_symm_matrix(long m, long n) {
-    std::vector<float> mat(m*n);
-    for (int i=0; i<m; i++) {
-
-    }
 }
 
 static std::vector<float> gen_matrix_symm(long m, long n) {
@@ -67,22 +60,16 @@ static void print_matrix(std::vector<float> M, int n) {
 int main(int argc, char **argv) {
     int n = atoi(argv[1]);
 
-    auto a = gen_matrix(n, n, 2.0);
-    auto b = gen_matrix(n, n, 2.0);
+    auto a = gen_matrix_symm(n, n);
     auto c = gen_matrix(n, n, 0.0);
     auto c2 = c; 
 
-    auto begin = std::chrono::steady_clock::now();
-    long FLOP_C = 2 *long(n);
-
-    cblas_ssymm(CblasRowMajor, CblasLeft, CblasLower,
+    cblas_ssyrk(CblasRowMajor, CblasUpper, CblasNoTrans,
                 n, n, // M N K
                 1.0, // alpha
                 a.data(),
                 n, // M
-                b.data(),
-                n, // K
-                1.0, // beta
+                1.0,
                 c.data(),
                 n  // M
                 );
@@ -97,18 +84,11 @@ int main(int argc, char **argv) {
                 c.data(),
                 n  // M
                 );*/
-    auto end = std::chrono::steady_clock::now();
 
-    double duration = std::chrono::duration<double>(end - begin).count() / 1.e3;
-    printf("openBLAS SYMM took %5.10lf ms, or %4.1lf GFLOPS\n", duration, (FLOP_C*1.0e-6)/duration);
-    //print_matrix(c, n);
-    begin = std::chrono::steady_clock::now();
-    __SYMM_BLK(NULL, n, a.data(), b.data(), c2.data());
-    end = std::chrono::steady_clock::now();
+    print_matrix(c, n);
 
-    duration = std::chrono::duration<double>(end - begin).count() / 1.e3;
-    printf("exo SYMM took %5.10lf ms, or %4.1lf GFLOPS\n", duration, (FLOP_C*1.0e-6)/duration);
+    SYRK(NULL, n, n, a.data(), c2.data());
     //sgemm_exo(NULL, n, n, n, a.data(), b.data(), c2.data());
 
-    //print_matrix(c2, n);
+    print_matrix(c2, n);
 }

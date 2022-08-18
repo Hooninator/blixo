@@ -12,19 +12,19 @@ import modular_sgemm
 file = open("symm_2.c", 'w+')
 
 #microkernel sizes
-M_r = 4
-N_r = 4 #NOTE: This must be divisible by 4, fix that at some point
+M_r = 8
+N_r = 32 #NOTE: This must be divisible by 4, fix that at some point
 #block sizes
-M_c = 4
-K_c = 4
+M_c = 64
+K_c = 64
 #Matrix sizes
-M=32
-N=32
-K=32
+M=256
+N=256
+K=256
 
 
 #Substitute GEPP
-n_iters = 1+((N-2*M_c)//M_c)
+n_iters = (1+((N-2*M_c)//M_c)) + 1
 print(f"n_iters: {n_iters}")
 
 @proc
@@ -35,13 +35,13 @@ def __SYMM_BLK(K: size, A: f32[M, K] @ DRAM, B: f32[K, N] @ DRAM,
     assert K > 4
     assert K % K_c == 0
     assert M % M_c == 0
-    assert K >= K_c*(n_iters+1)
-    assert M >= M_c*(n_iters+1)
+    assert K >= K_c*(n_iters)
+    assert M >= M_c*(n_iters)
     assert stride(A, 1) == 1
     assert stride(B, 1) == 1
     assert stride(C, 1) == 1
     
-    for n_iter in seq(0, n_iters+1):
+    for n_iter in seq(0, n_iters):
         A_panel: R[M, K_c] @ DRAM_STATIC
         
         #This loop handles the transposed A_10 block
@@ -55,7 +55,7 @@ def __SYMM_BLK(K: size, A: f32[M, K] @ DRAM, B: f32[K, N] @ DRAM,
                 A_panel[(n_iter * K_c + i), k] = A[(i + n_iter * M_c), (k + n_iter * K_c)]
         
         #This loop handles the A_21 block
-        for i in par(0, (M - M_c - (n_iter * M_c))):
+        for i in par(0, (M - M_c - (n_iter * K_c))):
             for k in par(0, K_c):
                 A_panel[(M_c + n_iter * M_c + i), k] = A[(i + M_c * n_iter + M_c), (k + n_iter * K_c)]
 

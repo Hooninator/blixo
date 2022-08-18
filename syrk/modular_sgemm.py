@@ -70,14 +70,13 @@ sgemm_window = (SGEMM
 
 #microkernel sizes
 M_r = 4
-N_r = 4 #NOTE: This must be divisible by 4, fix that at some point
+N_r = 4 #NOTE: This must be divisible by 4
 #block sizes
-M_c = 4
+M_c = 4 
 K_c = 4
 #Matrix sizes
 M=16
 N=16
-K=16
 
 
 #Microkernels
@@ -94,34 +93,40 @@ neon_microkernel = (microkernel
                     .rename('neon_microkernel')
                     .reorder('j','k')
                     .reorder('i','k')
+                    #.reorder('i','j')
                     #Somehow, using this split command resizes C 
                     .split('j', 4, ['jo','ji'], perfect=True)
                     .par_to_seq('for k in _: _')
                     .stage_assn('C_reg', 'C[_] += _')
-                    .lift_alloc('C_reg : _', n_lifts=4)
+                    .set_memory('C_reg', Neon4f)
+                    .lift_alloc('C_reg : _', n_lifts=3)
                     #double fission lifts both statements out and copies the loops they're wrapped in
                     .double_fission('C_reg[_] = C[_]', 'C_reg[_] += _', n_lifts=4)
                     .replace(neon_vld_4xf32, 'for ji in _: _ #0')
                     .replace(neon_vst_4xf32, 'for ji in _: _ #1')
-                    .set_memory('C_reg', Neon4f)
                     )
+print(neon_microkernel)
 
 neon_microkernel = (neon_microkernel
                     .stage_expr('A_vec', 'A[_,_]', memory=Neon4f)
                     .stage_expr('B_vec', 'B[_,_]', memory=Neon4f)
+                    #.replace(neon_vld_4xf32, 'for ji in _: _ #0')
+                    #.replace(neon_vst_4xf32, 'for ii in _:_ #3')
                     .replace_all(neon_vld_4xf32)
                     .replace_all(neon_broadcast_4xf32)
                     .replace_all(neon_vfmadd_4xf32_4xf32)
+                    #.lift_alloc('B_vec: _')
+                    #.fission_after('neon_broadcast_4xf32(_)')
                     #lift_alloc and fission_after are used to split up bodies of loops
                     .lift_alloc('A_vec : _', n_lifts=2)
                     .fission_after('neon_broadcast_4xf32(_)', n_lifts=2)
                     .lift_alloc('B_vec : _', n_lifts=2)
                     .fission_after('neon_vld_4xf32(_) #1', n_lifts=2)
-                    #.unroll('i') NOTE: For some reason, trying to unroll i causes a recursion depth exception
+                    #.unroll('i') #NOTE: For some reason, trying to unroll i causes a recursion depth exception
                     #.unroll('k') NOTE: This leads to no performance improvement, and it also makes generation take a long time
                     .unroll('jo')
                     .simplify())
-#print(neon_microkernel)
+print(neon_microkernel)
 
 #Microkernel for standard edge case
 microkernel_edge = (sgemm_window
@@ -133,7 +138,6 @@ neon_microkernel_edge = (microkernel_edge
                     .rename('neon_microkernel_edge')
                     .reorder('j','k')
                     .reorder('i','k')
-                    #Somehow, using this split command resizes C 
                     .split('j', 4, ['jo','ji'], perfect=True)
                     .par_to_seq('for k in _: _')
                     .stage_assn('C_reg', 'C[_] += _')
@@ -151,8 +155,6 @@ neon_microkernel_edge = (neon_microkernel_edge
                     .replace_all(neon_vld_4xf32)
                     .replace_all(neon_broadcast_4xf32)
                     .replace_all(neon_vfmadd_4xf32_4xf32)
-                    #.lift_alloc('A_vec: _')
-                    #.fission_after('neon_broadcast_4xf32(_)')
                     #lift_alloc and fission_after are used to split up bodies of loops
                     .lift_alloc('A_vec : _', n_lifts=2)
                     .fission_after('neon_broadcast_4xf32(_)', n_lifts=2)
@@ -168,6 +170,12 @@ neon_microkernel_edge = (neon_microkernel_edge
 
 
 #GEBP edge case microkernels
+microkernel_edge_gebp_simple = (sgemm_window
+                                .rename("microkernel_edge_gebp_simple")
+                                .partial_eval(K=K_c)
+                                .partial_eval(N=N%N_r)
+                                )
+
 
 #Pattern matching purposes
 microkernel_edge_gebp = (sgemm_window
@@ -267,7 +275,9 @@ bottom_gebp_kc = (sgemm_window
 GEBP_MKc = (sgemm_window
         .rename("GEBP_MKc")
         .partial_eval(M=M_c)
-        .partial_eval(K=K_c))
+        .partial_eval(K=K_c)
+        #.partial_eval(N=N)
+        )
 
 GEBP_edge_Kc = (sgemm_window
                 .rename("GEBP_edge_Kc")
@@ -283,25 +293,27 @@ GEBP = (GEBP_MKc
         .split('j', N_r, ['jo', 'ji'], tail='cut_and_guard')
         #Handle edge case
         .fission_after('for jo in _: _', n_lifts=2)
+        .fission_after('for io in _: _', n_lifts=2)
         #reorder so loop ordering is same as microkernel
         .reorder('ii','jo')
-        .lift_if('if N % _ > 0: _ #0')
-        .lift_if('if N % _ > 0: _ #1')
+        .lift_if(f'if N % _ > 0: _ #0')
+        .lift_if(f'if N % _ > 0: _ #1')
         #outer loop must be A[0], middle loop must be B[1], inner loop must be total size of C
         .replace_all(microkernel)
         .call_eqv(neon_microkernel, 'microkernel(_)')
-        #.replace_all(microkernel_edge_gebp)
-        #.call_eqv(microkernel_edge_gebp_scheduled, 'microkernel_edge_gebp(_)')
+        .replace_all(microkernel_edge_gebp)
+        #.replace_all(microkernel_edge_gebp_simple)
+        .call_eqv(microkernel_edge_gebp_scheduled, 'microkernel_edge_gebp(_)')
         #Tiling the panels of B or A leads to a small performance decrease :( 
         .simplify()
         #.reorder('io', 'jo')
         #.stage_mem(f'B[0:{K_c},'
-         #          f'{N_r}*jo:{N_r}*jo+{N_r}]',
-          #         'B_strip', 'for io in _:_ #0')
+        #           f'{N_r}*jo:{N_r}*jo+{N_r}]',
+        #           'B_strip', 'for io in _:_ #0')
         #.stage_mem(f'A[io*{M_r}:io*{M_r}+{M_r},'
          #          f'0:{K_c}]', 'A_strip', 'for jo in _:_ #0')
         #.simplify()
-        #.set_memory('B_strip', DRAM_STATIC)
+        #.set_memory('A_strip', DRAM_STATIC)
 )
 print(GEBP)
 GEBP_edge = (GEBP_edge_Kc
@@ -337,9 +349,11 @@ GEBP_edge = (GEBP_edge_Kc
 #MKc is the intermediate procedure used for replacing parts of other procedures with GEPP
 GEPP_MKc = (sgemm_window
              .rename("GEPP_MKc")
-             .partial_eval(K=K_c))
+             .partial_eval(K=K_c)
+             #.partial_eval(N=N)
+             )
 #file.write(GEPP_MKc.c_code_str())
-print(GEPP_MKc)
+
 GEPP_edge_Kc = (sgemm_window
                 .rename("GEPP_edge_Kc"))
 
@@ -356,6 +370,7 @@ GEPP = (GEPP_MKc
         .replace_all(bottom_gebp_kc)
         .simplify()
         #Transpose A_blk
+        #NOTE: rearrange dim is super jank and made me waste 4 hours debugging. Fun times were had.
         #.rearrange_dim('A_blk: _', [1, 0])
         )
 print(GEPP)
@@ -386,6 +401,7 @@ sgemm_exo = (SGEMM
               .fission_after('for ko in _: _ ', n_lifts=2)
               .reorder('ko', 'i')
               .reorder('ko', 'j')
+              #.partial_eval(N=N)
               #do the replacement
               .replace_all(GEPP_MKc)
               .replace(GEPP_edge_Kc, "for i in _: _ #0")
@@ -399,5 +415,4 @@ sgemm_exo = (SGEMM
               .bound_alloc('B_panel: _', [f'{K_c}', f'N'])
               )
 print(f"Total execution time: {time.time()-stime}s") 
-print(sgemm_exo)
 file.write(sgemm_exo.c_code_str())
