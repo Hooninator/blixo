@@ -1,3 +1,5 @@
+# This is the version you should be looking at
+
 from __future__ import annotations
 from exo import *
 from exo.libs.memories import DRAM_STATIC
@@ -52,9 +54,9 @@ def microkernel_gemv(M: size, K: size, A: [f32][M, K] @ DRAM, A_t: [f32][K, M] @
             C[0, j] += A[0, k] * A_t[k, j]
 
 
-# Generate microkernel_gemv
-def generate_gemv_microkernel(M_dim, kernel):
-    return (kernel.rename(f"neon_microkernel_gemv_{M_dim}")
+# Generate scheduled microkernel_gemv
+microkernel_gemv_inter = microkernel_gemv.rename("microkernel_gemv_inter").partial_eval(K=K_c).partial_eval(M=N_r).simplify()
+microkernel_gemv_scheduled = (microkernel_gemv_inter.rename(f"neon_microkernel_gemv")
                         .reorder('j','k')
                         .split('j', 4, ['jo','ji'], perfect=True)
                         .par_to_seq('for k in _: _')
@@ -74,12 +76,7 @@ def generate_gemv_microkernel(M_dim, kernel):
                         #.lift_alloc('A_t_vec : _', n_lifts=1)
                         #.fission_after('neon_vld_4xf32(_) #1', n_lifts=1)
                         .unroll('jo')
-                        .simplify()
-                        )
-
-microkernel_gemv_inter = microkernel_gemv.partial_eval(K=K_c).partial_eval(M=N_r).simplify()
-microkernel_gemv_scheduled = generate_gemv_microkernel(N_r, microkernel_gemv_inter)
-print(microkernel_gemv)
+                        .simplify())
 
 # GEBP Kernel Generation
 GEBP_intermediate = (microkernel_gemv.partial_eval(M=M_c)
@@ -93,8 +90,8 @@ print(GEBP_intermediate)
 GEBP_scheduled = (GEBP_intermediate
                     .rename("GEBP_scheduled")
                     .split('j', N_r, ['jo', 'ji'], tail='cut_and_guard')
-                    .replace_all(microkernel_gemv)
-                    .repeat(Procedure.call_eqv, microkernel_gemv_scheduled, 'microkernel_gemv(_)')
+                    .replace_all(microkernel_gemv_inter)
+                    .call_eqv(microkernel_gemv_scheduled, 'microkernel_gemv_inter(_)')
                     .simplify()
 )
 
