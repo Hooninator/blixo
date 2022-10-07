@@ -64,14 +64,14 @@ mid_M = L1_M // micro_M
 mid_K = L1_K
 
 microkernel = (
-    sgemm_win.rename('microkernel')
+    sgemm_win.rename('microkernel_g')
         .partial_eval(micro_N,micro_M)
         .simplify()
 )
-
+print(microkernel)
 
 sgemm_tiled = (
-    SGEMM.rename('sgemm_tiled')
+    SGEMM.rename('sgemm_tiled_g')
         # tile i & j for the kernel
         .split('i', micro_N, ['io', 'ii'], tail='cut_and_guard')
         .split('j #0', micro_M, ['jo', 'ji'], tail='cut_and_guard')
@@ -86,10 +86,10 @@ sgemm_tiled = (
         .replace_all(microkernel)
         .simplify()
 )
-#print(sgemm_tiled)
+print(sgemm_tiled)
 
 neon_microkernel = (
-    microkernel.rename('neon_microkernel')
+    microkernel.rename('neon_microkernel_g')
         # Move k to the outermost loop
         .reorder('j','k')
         .reorder('i','k')
@@ -114,13 +114,14 @@ neon_microkernel = ( stage_A_and_B(neon_microkernel)
     .fission_after('neon_broadcast_4xf32(_)', n_lifts=2)
     .lift_alloc('B_vec : _', n_lifts=2)
     .fission_after('neon_vld_4xf32(_) #1', n_lifts=2)
+    #.unroll('jo')
 )
 
 neon_microkernel = neon_microkernel.simplify()
 #print(neon_microkernel.c_code_str())
-
+print(sgemm_tiled)
 sgemm_tiled = (sgemm_tiled
-    .call_eqv(neon_microkernel, 'microkernel(_)')
+    .call_eqv(neon_microkernel, 'microkernel_g(_)')
     #.call_eqv(neon_microkernel, 'microkernel(_)')
     # clean up tail case from earlier
     .fission_after('for ko in _: _ #0', n_lifts=2)
@@ -148,8 +149,8 @@ sgemm_tiled = (sgemm_tiled
     .simplify()
 )
 
-sgemm_exo = sgemm_tiled.rename('sgemm_exo')
+sgemm_exo = sgemm_tiled.rename('sgemm_exo_g')
 file.write(sgemm_exo.c_code_str())
 file.close()
 
-__all__ = ['sgemm_exo']
+__all__ = ['sgemm_exo_g']

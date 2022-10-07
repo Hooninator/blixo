@@ -9,7 +9,7 @@
 
 
 #include <cblas.h>
-#include "syrk.c"
+#include "guard.c"
 //#include "output.c"
 
 static std::vector<float> gen_matrix(long m, long n, float v) {
@@ -18,8 +18,8 @@ static std::vector<float> gen_matrix(long m, long n, float v) {
   std::uniform_real_distribution<> rv{-1.0f, 1.0f};
 
   std::vector<float> mat(m * n);
-  std::generate(std::begin(mat), std::end(mat), [&]() { return v; });
-  //std::generate(std::begin(mat), std::end(mat), [&]() { return rv(rng); });
+  //std::generate(std::begin(mat), std::end(mat), [&]() { return v; });
+  std::generate(std::begin(mat), std::end(mat), [&]() { return rv(rng); });
 
   return mat;
 }
@@ -47,24 +47,37 @@ static std::vector<float> gen_matrix_symm(long m, long n) {
     return mat;
 }
 
-static void print_matrix(std::vector<float> M, int n) {
-    for (int i = 0; i < n; i++) {
+static void print_matrix(std::vector<float> M, int n, int k) {
+    for (int i = 0; i < k; i++) {
         for (int j = 0; j < n; j++) {
-            std::cout << M[j*n + i] << ", ";
+            std::cout << M[j*k + i] << ", ";
         }
         std::cout << std::endl;
     }
     std::cout << std::endl;
 }
 
+static std::vector<float> transpose(std::vector<float> V, const int m, const int k ) {
+    std::vector<float> V_t(k*m);
+    for (int i=0; i<m; i++) {
+        for (int j=0; j<k; j++) {
+            V_t[j*m + i] = V[i*k + j];
+        }
+    }
+
+    return V_t;
+}
+
+
 int main(int argc, char **argv) {
     int n = atoi(argv[1]);
 
-    auto a = gen_matrix_symm(n, n);
-    auto c = gen_matrix(n, n, 0.0);
+    auto a = gen_matrix(n, n, 2.0);
+    auto a2 = transpose(a, n, n);
+    auto c = gen_matrix_symm(n, n);
     auto c2 = c; 
 
-    cblas_ssyrk(CblasRowMajor, CblasUpper, CblasNoTrans,
+    cblas_ssyrk(CblasRowMajor, CblasLower, CblasNoTrans,
                 n, n, // M N K
                 1.0, // alpha
                 a.data(),
@@ -73,22 +86,48 @@ int main(int argc, char **argv) {
                 c.data(),
                 n  // M
                 );
-    /*cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                n, n, n, // M N K
+   /* cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                n, n, 10, // M N K
                 1.0, // alpha
                 a.data(),
                 n, // M
-                b.data(),
+               a.data(),
                 n, // K
                 1.0, // beta
                 c.data(),
                 n  // M
                 );*/
 
-    print_matrix(c, n);
+    std::cout << "Correct output:" << std::endl;
+    print_matrix(c, n, n);
 
-    SYRK(NULL, n, n, a.data(), c2.data());
+    std::cout << "Matrix C:" << std::endl;
+    print_matrix(c2, n, n);
+    std::cout << "Matrix A:" << std::endl;
+    print_matrix(a, n, n);
+
+    std::cout << "Actual Output:" << std::endl;
+    SYRK2(nullptr, n, n, a.data(), transpose(a, n, n).data(), c2.data());
+    print_matrix(c2, n, n);
+    //SGEMM3(NULL, n, n, 16, a.data(), a.data(), c2.data());
+    //SYRK(NULL, n, n, a.data(), a.data(), c2.data());
     //sgemm_exo(NULL, n, n, n, a.data(), b.data(), c2.data());
+    /*auto A_micro = gen_matrix(4, 4, 2.0);
+    auto C_micro = gen_matrix(4, 4, 2.0);
+    auto C_micro_2 = C_micro;
 
-    print_matrix(c2, n);
+    microkernel_two(nullptr, A_micro.data(), A_micro.data(), C_micro_2.data());
+    std::cout << "Correct output:" << std::endl;
+    print_matrix(C_micro_2, 4, 4);
+
+    std::cout << "Matrix C:" << std::endl;
+    print_matrix(C_micro, 4, 4);
+    std::cout << "Matrix A:" << std::endl;
+    print_matrix(A_micro, 4, 4);
+
+    std::cout << "Actual Output:" << std::endl;
+    neon_microkernel_two_4(nullptr, A_micro.data(), transpose(A_micro, 4, 4).data(), C_micro.data());
+    print_matrix(C_micro, 4, 4);*/
+
+    //print_matrix(c2, n, n);
 }

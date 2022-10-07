@@ -278,7 +278,7 @@ GEBP_MKc = (sgemm_window
         .partial_eval(K=K_c)
         #.partial_eval(N=N)
         )
-
+print(GEBP_MKc)
 GEBP_edge_Kc = (sgemm_window
                 .rename("GEBP_edge_Kc")
                 .partial_eval(M=M_c))

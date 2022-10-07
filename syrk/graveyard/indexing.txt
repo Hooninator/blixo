@@ -1,0 +1,87 @@
+Now the damn indexing wont work
+
+Indexing for symmetric won't work for GEPP, 
+
+def GEPP_syrk_intermediate(M: size, N: size, A: [f32][M, N] @ DRAM,
+                           B: [f32][M, 4] @ DRAM, C: [f32][N, 4] @ DRAM):
+    assert M >= 1
+    assert N >= 1
+    assert 4 == M
+    assert stride(A, 1) == 1
+    assert stride(C, 1) == 1
+    for i in par(0, N):
+        for j in par(0, M):
+            for k in par(0, 4):
+                C[i, j] += A[k, i] * B[k, j]
+
+def GEPP_syrk(M: size, N: size, A: [f32][M, N] @ DRAM, B: [f32][M, 4] @ DRAM,
+              C: [f32][N, 4] @ DRAM):
+    assert M >= 1
+    assert N >= 1
+    assert 4 == M
+    assert stride(A, 1) == 1
+    assert stride(C, 1) == 1
+    for i in par(0, N):
+        for jo in par(0, M / 4):
+            for ji in par(0, 4):
+                for k in par(0, 4):
+                    C[i, 4 * jo + ji] += A[k, i] * B[k, 4 * jo + ji]
+        if M % 4 > 0:
+            for ji in par(0, M % 4):
+                for k in par(0, 4):
+                    C[i, ji + M / 4 * 4] += A[k, i] * B[k, ji + M / 4 * 4]
+
+
+
+
+Won't pattern match but have to use SGEMM
+
+def GEPP_syrk(M: size, N: size, A: [f32][M, 4] @ DRAM, B: [f32][4, N] @ DRAM,
+              C: [f32][M, N] @ DRAM):
+    assert M >= 1
+    assert N >= 1
+    assert stride(A, 1) == 1
+    assert stride(B, 1) == 1
+    assert stride(C, 1) == 1
+    for i in par(0, N):
+        for jo in par(0, M / 4):
+            for ji in par(0, 4):
+                for k in par(0, 4):
+                    C[4 * jo + ji, i] += A[4 * jo + ji, k] * B[k, i]
+        if M % 4 > 0:
+            for ji in par(0, M % 4):
+                for k in par(0, 4):
+                    C[ji + M / 4 * 4, i] += A[ji + M / 4 * 4, k] * B[k, i]
+
+def exo_syrk(M: size, K: size, A: [f32][M, K] @ DRAM, B: [f32][K, M] @ DRAM,
+             C: [f32][M, M] @ DRAM):
+    assert M >= 1
+    assert K >= 1
+    assert K == M
+    assert stride(A, 1) == 1
+    assert stride(C, 1) == 1
+    for ki in par(0, K / 4):
+        for j in par(0, M):
+            for i in par(0, j + 1):
+                for ko in par(0, 4):
+                    C[i, j] += A[4 * ki + ko, i] * B[4 * ki + ko, j]
+    if K % 4 > 0:
+        for j in par(0, M):
+            for i in par(0, j + 1):
+                for ko in par(0, K % 4):
+                    C[i, j] += A[ko + K / 4 * 4, i] * B[ko + K / 4 * 4, j]
+
+
+
+if 4 * jo == 4:
+                for ji in par(0, 4):
+                    for ii in par(0, (4 + ji + 1) / 4):
+                        for io in par(0, 4):
+                            for k in par(0, 4):
+                                C[4 * ii + io,
+                                  4 + ji] += A[k, 4 + ji] * B[k, 4 * ii + io]
+                    for io in par(0, (4 + ji + 1) % 4):
+                        for k in par(0, 4):
+                            C[io + (4 + ji + 1) / 4 * 4,
+                              4 + ji] += A[k, 4 + ji] * B[k, io +
+                                                          (4 + ji + 1) / 4 * 4]

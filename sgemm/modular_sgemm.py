@@ -29,23 +29,19 @@ def generate_microkernel(kernel, n_dim):
                 .par_to_seq('for k in _: _')
                 .stage_assn('C_reg', 'C[_] += _')
                 .lift_alloc('C_reg : _', n_lifts=4)
-                #double fission lifts both statements out and copies the loops they're wrapped in
                 .double_fission('C_reg[_] = C[_]', 'C_reg[_] += _', n_lifts=4)
                 .replace(neon_vld_4xf32, 'for ji in _: _ #0')
                 .replace(neon_vst_4xf32, 'for ji in _: _ #1')
                 .set_memory('C_reg', Neon4f)
-                #.set_memory('C_reg_1', DRAM_STATIC)
                 .stage_expr('A_vec', 'A[_,_]', memory=Neon4f)
                 .stage_expr('B_vec', 'B[_,_]', memory=Neon4f)
                 .replace_all(neon_vld_4xf32)
                 .replace_all(neon_broadcast_4xf32)
                 .replace_all(neon_vfmadd_4xf32_4xf32)
-                #lift_alloc and fission_after are used to split up bodies of loops
                 .lift_alloc('A_vec : _', n_lifts=2)
                 .fission_after('neon_broadcast_4xf32(_)', n_lifts=2)
                 .lift_alloc('B_vec : _', n_lifts=2)
                 .fission_after('neon_vld_4xf32(_) #1', n_lifts=2)
-                .unroll('jo')
                 .simplify())
 
 @proc
@@ -69,12 +65,11 @@ sgemm_window = (SGEMM
                 .set_window('C', True))
 
 #microkernel sizes
-M_r = 4
-N_r = 16 #NOTE: This must be divisible by 4
+M_r = 4 #4
+N_r = 16 #16
 #block sizes
-M_c = 64 
-K_c = 64
-#N_c = 1024
+M_c = 64 #64
+K_c = 128 #128
 #Matrix sizes
 M=1024
 N=1024
@@ -306,7 +301,7 @@ GEBP = (GEBP_MKc
         #.replace_all(microkernel_edge_gebp)
         #.replace_all(microkernel_edge_gebp_simple)
         #.call_eqv(microkernel_edge_gebp_scheduled, 'microkernel_edge_gebp(_)')
-        #Tiling the panels of B or A leads to a small performance decrease :( 
+        #Tiling the panels of B or A leads to a small performance decrease --nvm
         #.simplify()
         #.unroll('jo')
         .reorder('io', 'jo')

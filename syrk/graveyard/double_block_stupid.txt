@@ -1,0 +1,134 @@
+def GEPP_syrk_intermediate(A: [f32][4, 4] @ DRAM, A_t: [f32][4, 4] @ DRAM,
+                           C: [f32][4, 4] @ DRAM):
+    assert stride(A, 1) == 1
+    assert stride(A_t, 1) == 1
+    assert stride(C, 1) == 1
+    for i in par(0, 4):
+        for j in par(0, i + 1):
+            for k in par(0, 4):
+                C[i, j] += A[i, k] * A_t[j, k]
+
+def GEPP_syrk(A: [f32][4, 4] @ DRAM, A_t: [f32][4, 4] @ DRAM,
+              C: [f32][4, 4] @ DRAM):
+    assert stride(A, 1) == 1
+    assert stride(A_t, 1) == 1
+    assert stride(C, 1) == 1
+    for io in par(0, 1):
+        for ii in par(0, 4):
+            if io == 0:
+                for j in par(0, ii + 1):
+                    for k in par(0, 4):
+                        C[ii, j] += A[ii, k] * A_t[j, k]
+            else:
+                if io == 1:
+                    if ii == 0:
+                        for j in par(0, 4):
+                            for k in par(0, 4):
+                                C[4, j] += A[4, k] * A_t[j, k]
+                    if ii == 0:
+                        for j in par(0, 1):
+                            for k in par(0, 4):
+                                C[4, j + 4] += A[4, k] * A_t[j + 4, k]
+                    else:
+                        if ii == 1:
+                            for j in par(0, 6):
+                                for k in par(0, 4):
+                                    C[5, j] += A[5, k] * A_t[j, k]
+                        else:
+                            if ii == 2:
+                                for j in par(0, 7):
+                                    for k in par(0, 4):
+                                        C[6, j] += A[6, k] * A_t[j, k]
+                            else:
+                                if ii == 3:
+                                    for j in par(0, 8):
+                                        for k in par(0, 4):
+                                            C[7, j] += A[7, k] * A_t[j, k]
+                                else:
+                                    for j in par(0, 5 + ii):
+                                        for k in par(0, 4):
+                                            C[4 + ii,
+                                              j] += A[4 + ii, k] * A_t[j, k]
+                else:
+                    if io == 2:
+                        for j in par(0, 9 + ii):
+                            for k in par(0, 4):
+                                C[8 + ii, j] += A[8 + ii, k] * A_t[j, k]
+                    else:
+                        if io == 3:
+                            for j in par(0, 13 + ii):
+                                for k in par(0, 4):
+                                    C[12 + ii, j] += A[12 + ii, k] * A_t[j, k]
+                        else:
+                            for j in par(0, 4 * io + ii + 1):
+                                for k in par(0, 4):
+                                    C[4 * io + ii,
+                                      j] += A[4 * io + ii, k] * A_t[j, k]
+
+def exo_syrk(M: size, K: size, A: [f32][M, K] @ DRAM, A_t: [f32][M, K] @ DRAM,
+             C: [f32][M, M] @ DRAM):
+    assert M >= 1
+    assert K >= 1
+    assert stride(A, 1) == 1
+    assert stride(A_t, 1) == 1
+    assert stride(C, 1) == 1
+    for ki in par(0, K / 4):
+        for ii in par(0, M / 4):
+            if ii == 0:
+                GEPP_syrk_intermediate(A[0:4, 4 * ki:4 * ki + 4],
+                                       A_t[0:4, 4 * ki:4 * ki + 4], C[0:4,
+                                                                      0:4])
+            else:
+                if ii == 1:
+                    for io in par(0, 4):
+                        for j in par(0, 5 + io):
+                            for ko in par(0, 4):
+                                C[4 + io,
+                                  j] += A[4 + io,
+                                          4 * ki + ko] * A_t[j, 4 * ki + ko]
+                else:
+                    if ii == 2:
+                        for io in par(0, 4):
+                            for j in par(0, 9 + io):
+                                for ko in par(0, 4):
+                                    C[8 + io, j] += A[8 + io, 4 * ki +
+                                                      ko] * A_t[j, 4 * ki + ko]
+                    else:
+                        if ii == 3:
+                            for io in par(0, 4):
+                                for j in par(0, 13 + io):
+                                    for ko in par(0, 4):
+                                        C[12 + io,
+                                          j] += A[12 + io, 4 * ki +
+                                                  ko] * A_t[j, 4 * ki + ko]
+                        else:
+                            for io in par(0, 4):
+                                for j in par(0, 4 * ii + io + 1):
+                                    for ko in par(0, 4):
+                                        C[4 * ii + io,
+                                          j] += A[4 * ii + io, 4 * ki +
+                                                  ko] * A_t[j, 4 * ki + ko]
+    for ki in par(0, K / 4):
+        if M % 4 > 0:
+            for io in par(0, M % 4):
+                for j in par(0, io + M / 4 * 4 + 1):
+                    for ko in par(0, 4):
+                        C[io + M / 4 * 4,
+                          j] += A[io + M / 4 * 4,
+                                  4 * ki + ko] * A_t[j, 4 * ki + ko]
+    if K % 4 > 0:
+        for ii in par(0, M / 4):
+            for io in par(0, 4):
+                for j in par(0, 4 * ii + io + 1):
+                    for ko in par(0, K % 4):
+                        C[4 * ii + io,
+                          j] += A[4 * ii + io,
+                                  ko + K / 4 * 4] * A_t[j, ko + K / 4 * 4]
+    if K % 4 > 0:
+        if M % 4 > 0:
+            for io in par(0, M % 4):
+                for j in par(0, io + M / 4 * 4 + 1):
+                    for ko in par(0, K % 4):
+                        C[io + M / 4 * 4,
+                          j] += A[io + M / 4 * 4,
+                                  ko + K / 4 * 4] * A_t[j, ko + K / 4 * 4]

@@ -1,0 +1,22 @@
+def GEBP_4x12(A: [f32][12, 4] @ DRAM, B: [f32][4, 4] @ DRAM,
+              C: [f32][12, 4] @ DRAM):
+    assert stride(A, 1) == 1
+    assert stride(B, 1) == 1
+    assert stride(C, 1) == 1
+    for j in par(0, 4):
+        for i in par(0, 12):
+            for k in par(0, 4):
+                C[i, j] += A[i, k] * B[k, j]
+
+
+def GEPP_syrk(M: size, A: [f32][M, 4] @ DRAM, B: [f32][4, M] @ DRAM,
+              C: [f32][M, M] @ DRAM):
+    assert M >= 1
+    assert 4 == M
+    assert stride(A, 1) == 1
+    assert stride(C, 1) == 1
+    for j in par(0, M):
+        for ii in par(0, (j + 1) / 4):
+            for io in par(0, 4):
+                for k in par(0, 4):
+                    C[4 * ii + io, j] += A[k, j] * B[k, 4 * ii + io]

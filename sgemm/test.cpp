@@ -4,13 +4,13 @@
 #include <cstdlib>
 #include <random>
 #include <vector>
+#include <iostream>
 
 #include <chrono>
 
 //#include "sgemm.h"
 //#include "alex_sgemm.h"
-#include "naive_sgemm.cpp"
-#include <cblas.h>
+//#include "naive_sgemm.cpp"
 #include "output.c"
 //#include "sgemm_alex.c"
 #include "basic.c"
@@ -26,6 +26,16 @@ static std::vector<float> gen_matrix(long m, long n) {
   std::generate(std::begin(mat), std::end(mat), [&]() { return rv(rng); });
 
   return mat;
+}
+
+static void print_matrix(std::vector<float> M, int n, int k) {
+    for (int i = 0; i < k; i++) {
+        for (int j = 0; j < n; j++) {
+            std::cout << M[j*k + i] << ", ";
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -50,40 +60,17 @@ int main(int argc, char *argv[]) {
 
   int N_TIMES_NAIVE = 1;
   auto begin = std::chrono::steady_clock::now();
-  for(int times = 0; times<N_TIMES_NAIVE; times++) {
+  /*for(int times = 0; times<N_TIMES_NAIVE; times++) {
     naive_sgemm_square(a.data(), b.data(), c2.data(), n);
-  }
+  }*/
   auto end = std::chrono::steady_clock::now();
   double duration = std::chrono::duration<double>(end - begin).count();
   double ms_per_gemm = duration/N_TIMES_NAIVE*1.0e3;
-  printf("-----------------------------------------------------------\n");
-  printf("Naive SGEMM took %5.1lf ms, or %4.1lf GFLOPS\n",
-         ms_per_gemm, (FLOP_C*1.0e-6)/ms_per_gemm);
+
   
-  int N_TIMES_ACCELERATE = 1000;
+  int N_TIMES_EXO = 10;
   begin = std::chrono::steady_clock::now();
-  for(int times = 0; times<N_TIMES_ACCELERATE; times++) {
-    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                n, n, n, // M N K
-                1.0, // alpha
-                a.data(),
-                n, // M
-                b.data(),
-                n, // K
-                1.0, // beta
-                c.data(),
-                n  // M
-                );
-  }
-  end = std::chrono::steady_clock::now();
-  duration = std::chrono::duration<double>(end - begin).count();
-  ms_per_gemm = duration/N_TIMES_ACCELERATE*1.0e3;
-  printf("-----------------------------------------------------------\n");
-  printf("Apple SGEMM took %5.1lf ms, or %4.1lf GFLOPS\n",
-         ms_per_gemm, (FLOP_C*1.0e-6)/ms_per_gemm);
   
-  int N_TIMES_EXO = 1;
-  begin = std::chrono::steady_clock::now();
   for(int times = 0; times<N_TIMES_EXO; times++) {
     sgemm_exo(nullptr, n, n, n, a.data(), b.data(), c.data());
   }
@@ -91,10 +78,10 @@ int main(int argc, char *argv[]) {
   duration = std::chrono::duration<double>(end - begin).count();
   ms_per_gemm = duration/N_TIMES_EXO*1.0e3;
   printf("-----------------------------------------------------------\n");
-  printf("  Exo SGEMM took %5.1lf ms, or %4.1lf GFLOPS\n",
-         ms_per_gemm, (FLOP_C*1.0e-6)/ms_per_gemm);
+  printf("  Exo SGEMM took %5.1lf ms, or %4.1lf GFLOPS. That's %4.1lf percent of peak.\n",
+         ms_per_gemm, (FLOP_C*1.0e-6)/ms_per_gemm, (((FLOP_C*1.0e-6)/ms_per_gemm)/16)*100);
   
-  int N_TIMES_G = 1;
+  int N_TIMES_G = 10;
   begin = std::chrono::steady_clock::now();
   for(int times = 0; times<N_TIMES_G ; times++) {
     sgemm_exo_g(nullptr, n, n, n, a.data(), b.data(), c.data());
@@ -103,8 +90,8 @@ int main(int argc, char *argv[]) {
   duration = std::chrono::duration<double>(end - begin).count();
   ms_per_gemm = duration/N_TIMES_G *1.0e3;
   printf("-----------------------------------------------------------\n");
-  printf("  Gilbert SGEMM took %5.1lf ms, or %4.1lf GFLOPS\n",
-         ms_per_gemm, (FLOP_C*1.0e-6)/ms_per_gemm);
+  printf("  Gilbert SGEMM took %5.1lf ms, or %4.1lf GFLOPS. That's %4.1lf percent of peak.\n",
+         ms_per_gemm, (FLOP_C*1.0e-6)/ms_per_gemm, (((FLOP_C*1.0e-6)/ms_per_gemm)/16)*100);
   printf("-----------------------------------------------------------\n");
 
   /*

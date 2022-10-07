@@ -1,0 +1,62 @@
+def GEPP_syrk(M: size, A: [f32][M, 4] @ DRAM, B: [f32][4, M] @ DRAM,
+              C: [f32][M, M] @ DRAM):
+    assert M >= 1
+    assert 4 == M
+    assert stride(A, 1) == 1
+    assert stride(C, 1) == 1
+    for jo in par(0, M / 4):
+        if 4 * jo == 0:
+            for ji in par(0, 4):
+                for i in par(0, ji + 1):
+                    for k in par(0, 4):
+                        C[i, ji] += A[k, i] * B[k, ji]
+        else:
+            if 4 * jo == 4:
+                for ji in par(0, 4):
+                    for ii in par(0, (4 + ji + 1) / 4):
+                        for io in par(0, 4):
+                            for k in par(0, 4):
+                                C[4 * ii + io,
+                                  4 + ji] += A[k, 4 * ii + io] * B[k, 4 + ji]
+                    if (4 + ji + 1) % 4 > 0:
+                        for io in par(0, (4 + ji + 1) % 4):
+                            for k in par(0, 4):
+                                C[io + (4 + ji + 1) / 4 * 4, 4 +
+                                  ji] += A[k, io +
+                                           (4 + ji + 1) / 4 * 4] * B[k, 4 + ji]
+            else:
+                if 4 * jo == 8:
+                    for ji in par(0, 4):
+                        for i in par(0, 8 + ji + 1):
+                            for k in par(0, 4):
+                                C[i, 8 + ji] += A[k, i] * B[k, 8 + ji]
+                else:
+                    if 4 * jo == 12:
+                        for ji in par(0, 4):
+                            for i in par(0, 12 + ji + 1):
+                                for k in par(0, 4):
+                                    C[i, 12 + ji] += A[k, i] * B[k, 12 + ji]
+                    else:
+                        for ji in par(0, 4):
+                            for i in par(0, 4 * jo + ji + 1):
+                                for k in par(0, 4):
+                                    C[i, 4 * jo +
+                                      ji] += A[k, i] * B[k, 4 * jo + ji]
+    if M % 4 > 0:
+        for ji in par(0, M % 4):
+            for i in par(0, ji + M / 4 * 4 + 1):
+                for k in par(0, 4):
+                    C[i, ji + M / 4 * 4] += A[k, i] * B[k, ji + M / 4 * 4]
+
+
+Press F
+
+
+def GEBP_4x4(A: [f32][4, 4] @ DRAM, B: [f32][4, 4] @ DRAM,
+             C: [f32][4, 4] @ DRAM):
+    assert stride(A, 1) == 1
+    assert stride(C, 1) == 1
+    for j in par(0, 4):
+        for i in par(0, 4):
+            for k in par(0, 4):
+                C[i, j] += A[k, i] * B[k, j]

@@ -1,8 +1,10 @@
 
+#include <stdint.h>
+#include <stdbool.h>
 
 
 
-// sgemm_exo(
+// sgemm_exo_g(
 //     M : size,
 //     N : size,
 //     K : size,
@@ -14,23 +16,22 @@ void sgemm_exo_g( c_code_str_Context *ctxt, int_fast32_t M, int_fast32_t N, int_
 
 
 
-
-#include <arm_neon.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 
 
-
-/* relying on the following instruction...
-neon_vst_4xf32(dst,src)
-vst1q_f32(&{dst_data}, {src_data});
-*/
+#include <arm_neon.h>
 
 
 /* relying on the following instruction...
 neon_vfmadd_4xf32_4xf32(dst,lhs,rhs)
 {dst_data} = vmlaq_f32({dst_data}, {lhs_data}, {rhs_data});
+*/
+
+
+/* relying on the following instruction...
+neon_vst_4xf32(dst,src)
+vst1q_f32(&{dst_data}, {src_data});
 */
 
 
@@ -45,7 +46,7 @@ neon_vld_4xf32(dst,src)
 {dst_data} = vld1q_f32(&{src_data});
 */
 
-// neon_microkernel(
+// neon_microkernel_g(
 //     K : size,
 //     A : [f32][4,K]  @DRAM,
 //     B : [f32][K,16]  @DRAM,
@@ -84,7 +85,7 @@ for (int i = 0; i < 4; i++) {
 }
 }
 
-// sgemm_exo(
+// sgemm_exo_g(
 //     M : size,
 //     N : size,
 //     K : size,

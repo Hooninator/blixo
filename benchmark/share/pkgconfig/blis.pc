@@ -1,0 +1,11 @@
+prefix=/home/ubuntu/julian_working/benchmark
+exec_prefix=/home/ubuntu/julian_working/benchmark
+libdir=/home/ubuntu/julian_working/benchmark/lib
+includedir=/home/ubuntu/julian_working/benchmark/include
+
+Name: BLIS
+Description: BLAS-like Library Instantiation Software Framework
+Version: 0.9.0-45
+Libs: -L${libdir} -lblis
+Libs.private:  -lm -lpthread -lrt
+Cflags: -I${includedir}/blis

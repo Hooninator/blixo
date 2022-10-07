@@ -1,0 +1,21 @@
+clang does this for each register
+ 830:	3d851fe0 	str	q0, [sp, #5232]
+     834:	3dc51fe0 	ldr	q0, [sp, #5232]
+     838:	3d851be0 	str	q0, [sp, #5216]
+     83c:	3dc51be0 	ldr	q0, [sp, #5216]
+
+     why does it store and then load the same thing? seems weird
+
+
+Okay it appears to just store a bunch of shit on the stack during the "loading into C" loop
+Then later it appears to load everything from the stack and do fmla on it
+
+
+
+G++ converts fmal to fmul and fadd -- weird, but it's faster????
+
+
+
+The reperitions of the thing at the top are determined by N_r
+
+

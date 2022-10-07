@@ -21,7 +21,7 @@ M=256
 N=256
 K=256
 
-#A_t should be the A treated as if it was transposed, but when you pass the argument it should be a copy of A
+# A_t should be the A treated as if it was transposed, but when you pass the argument it should be a copy of A
 @proc
 def SYRK(M: size, K: size, A: f32[M, K], A_t: f32[K, M], C: f32[M, M]):
     assert M >= 1
@@ -41,6 +41,29 @@ syrk_window = (SYRK
                 .set_window('A_t', True)
                 .set_window('C', True))
 
+# Bound and guard thing
+@proc
+def SYRK2(M: size, K: size, A: f32[M, K], A_t: f32[K, M], C: f32[M, M]):
+    assert M >= 1
+    assert K >= 1
+    assert stride(A, 1) == 1
+    assert stride(A_t, 1) == 1
+    assert stride(C, 1) == 1
+
+    for i in par(0, M):
+        for j in par(0, M):
+            if j <= i:
+                for k in par(0, K):
+                    C[i, j] += A[i, k]*A_t[k, j]
+
+syrk_window = (SYRK2
+                .rename('syrk_win2')
+                .set_window('A', True)
+                .set_window('A_t', True)
+                .set_window('C', True))
+
+file2 = open('guard.c', 'w+')
+file2.write(SYRK2.c_code_str())
 
 # Microkernel
 @proc
@@ -89,7 +112,8 @@ print(GEBP_intermediate)
 
 GEBP_scheduled = (GEBP_intermediate
                     .rename("GEBP_scheduled")
-                    .split('j', N_r, ['jo', 'ji'], tail='cut_and_guard')
+                    .split('j', N_r, ['jo', 'ji'], tail='cut')
+                    .fission_after('for ji in _:_ #1', n_lifts=1)
                     .replace_all(microkernel_gemv_inter)
                     .call_eqv(microkernel_gemv_scheduled, 'microkernel_gemv_inter(_)')
                     .simplify()
@@ -108,7 +132,7 @@ GEPP_syrk_intermediate = (syrk_window
 GEPP_syrk = (GEPP_syrk_intermediate
             .rename("GEPP_syrk")
             .split('j #0', K_c, ['jo', 'ji'], tail='cut')
-            .fission_after('for ji in _:_ #1', n_lifts=2)
+            .fission_after('for ji in _:_ #1', n_lifts=1)
             .replace_all(GEBP_intermediate)
             .call_eqv(GEBP_scheduled, f'GEBP_{M_c}x{K_c}(_)')
             .simplify()

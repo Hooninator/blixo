@@ -2,6 +2,6 @@
 
 python3 symm_ultimate.py
 
-g++ test.cpp -lopenblas g++ test.cpp -lopenblas -o sgemm -fpermissive
+g++ test.cpp -lopenblas g++ test.cpp -lopenblas -o symm -fpermissive
 
-./a.out 256
+./symm 256
